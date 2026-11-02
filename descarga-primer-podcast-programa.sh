@@ -6,9 +6,8 @@
 # preview (~10-15 min) while the RSS announces the full duration. After the
 # download the real duration (ffprobe) is compared with the announced one: if
 # it is shorter than PREVIEW_RATIO percent, the file is rejected, remembered for
-# REJECT_TTL_MIN minutes and the next candidate episode is tried. The same
-# happens with downloads that are not audio (error pages). The episode already
-# in place is never overwritten by a preview or a failed download.
+# REJECT_TTL_MIN minutes and the next candidate episode is tried. The episode
+# already in place is never overwritten by a preview.
 
 PODCAST_RSS_URL="$1"
 TARGET_PATH="$2"
@@ -148,14 +147,7 @@ for POS in "${candidates[@]}"; do
 
     EXPECTED=`to_seconds "${durations_raw[$POS]}"`
     REAL=`ffprobe -v error -show_entries format=duration -of csv=p=0 "$TMP_DOWNLOAD" 2>/dev/null | cut -d. -f1`
-    if ! [[ "$REAL" =~ ^[0-9]+$ ]] || [ "$REAL" -lt 1 ]; then
-        # An error page (e.g. "AccessDenied" XML) instead of audio
-        echo "`$DATE_CMD` - [$TARGET_FILENAME][ERROR] Not an audio file: $SELECTED_DOWNLOAD (`file -b "$TMP_DOWNLOAD" | cut -c1-60`)"
-        touch "$REJECT_MARK"
-        rm -rf "$TMP_DIR"
-        continue
-    fi
-    if [ "$EXPECTED" -gt 0 ] && [ $(( REAL * 100 )) -lt $(( EXPECTED * PREVIEW_RATIO )) ]; then
+    if [ "$EXPECTED" -gt 0 ] && [ -n "$REAL" ] && [ $(( REAL * 100 )) -lt $(( EXPECTED * PREVIEW_RATIO )) ]; then
         echo "`$DATE_CMD` - [$TARGET_FILENAME][ERROR] Preview rejected: $SELECTED_DOWNLOAD lasts ${REAL}s, RSS says ${EXPECTED}s"
         touch "$REJECT_MARK"
         rm -rf "$TMP_DIR"
@@ -175,11 +167,6 @@ for POS in "${candidates[@]}"; do
 	mv -f "$TMP_TARGET" "$TMP_TARGET".tmp
 	ffmpeg -loglevel panic -y -i "$TMP_TARGET".tmp "$TMP_TARGET"
 	rm -f "$TMP_TARGET".tmp
-    fi
-    if [ ! -s "$TMP_TARGET" ]; then
-        echo "`$DATE_CMD` - [$TARGET_FILENAME][ERROR] Conversion failed $SELECTED_DOWNLOAD"
-        rm -rf "$TMP_DIR"
-        continue
     fi
     mv -f "$TMP_TARGET" "$TARGET_PATH"
     echo "$SELECTED_DOWNLOAD" > "$TARGET_PATH.lastdownload.txt"
